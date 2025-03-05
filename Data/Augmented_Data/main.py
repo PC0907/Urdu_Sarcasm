@@ -26,7 +26,10 @@ def load_and_preprocess_dataset(file_path, explore=True):
     if not all(col in df.columns for col in required_columns):
         raise ValueError(f"Dataset must contain columns: {required_columns}")
     
-    # Handle missing values in classify column first
+    # Convert classify column to numeric first
+    df['classify'] = pd.to_numeric(df['classify'], errors='coerce')
+    
+    # Handle missing values in classify column
     initial_count = len(df)
     df = df.dropna(subset=['classify'])
     new_count = len(df)
@@ -35,14 +38,13 @@ def load_and_preprocess_dataset(file_path, explore=True):
         print(f"Removed {initial_count - new_count} rows with missing 'classify' values")
     
     # Validate classification values
-    valid_labels = {0, 1}  # Update this if you have different classes
-    invalid_labels = df[~df['classify'].astype(str).str.isdigit() | 
-                    (~df['classify'].isin(valid_labels))
+    valid_labels = {0, 1}
+    invalid_mask = ~df['classify'].isin(valid_labels)
     
-    if invalid_labels.any():
-        print(f"Found {invalid_labels.sum()} invalid label(s). Examples:")
-        print(df[invalid_labels].head())
-        df = df[~invalid_labels]
+    if invalid_mask.any():
+        print(f"Found {invalid_mask.sum()} invalid label(s). Examples:")
+        print(df[invalid_mask].head())
+        df = df[~invalid_mask]
     
     # Convert to integer after cleaning
     df['label'] = df['classify'].astype(int)
@@ -55,15 +57,6 @@ def load_and_preprocess_dataset(file_path, explore=True):
     
     if explore:
         print(f"\nFinal dataset shape: {df.shape}")
-    
-    # Preprocess: create label column
-    df['label'] = df['classify'].astype(int)
-    
-    # Handle null values
-    df = df.dropna(subset=['text', 'label'])
-    
-    if explore:
-        print(f"\nDataset shape: {df.shape}")
         print("\nColumn names:")
         print(df.columns.tolist())
         print("\nSample data:")
