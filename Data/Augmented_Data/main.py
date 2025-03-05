@@ -120,7 +120,201 @@ class UrduSarcasmDataset(Dataset):
             'label': torch.tensor(label, dtype=torch.long)
         }
 
-# Rest of the functions (model, training, evaluation) remain unchanged
+class mBERTBiGRUMHA(nn.Module):
+    def __init__(self, bert_model_name='bert-base-multilingual-cased', num_classes=2, 
+                 hidden_size=768, gru_hidden_size=256, num_gru_layers=2, num_attention_heads=8, dropout=0.1):
+        super(mBERTBiGRUMHA, self).__init__()
+        
+        # mBERT
+        self.bert = BertModel.from_pretrained(bert_model_name)
+        
+        # BiGRU
+        self.gru = nn.GRU(
+            input_size=hidden_size,
+            hidden_size=gru_hidden_size,
+            num_layers=num_gru_layers,
+            batch_first=True,
+            bidirectional=True
+        )
+        
+        # Multi-Head Attention
+        self.multihead_attn = nn.MultiheadAttention(
+            embed_dim=gru_hidden_size * 2,  # bidirectional, so *2
+            num_heads=num_attention_heads
+        )
+        
+        # Dropout
+        self.dropout = nn.Dropout(dropout)
+        
+        # Classifier
+        self.classifier = nn.Linear(gru_hidden_size * 2, num_classes)
+    
+    def forward(self, input_ids, attention_mask, token_type_ids=None):
+        # mBERT
+        outputs = self.bert(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids
+        )
+        
+        # Get sequence output
+        sequence_output = outputs.last_hidden_state  # [batch_size, seq_len, hidden_size]
+        
+        # BiGRU
+        gru_output, _ = self.gru(sequence_output)  # [batch_size, seq_len, gru_hidden_size*2]
+        
+        # Apply Multi-Head Attention
+        # First, we need to permute for MultiheadAttention (seq_len, batch_size, embed_dim)
+        gru_output = gru_output.permute(1, 0, 2)
+        attn_output, _ = self.multihead_attn(gru_output, gru_output, gru_output, 
+                                            key_padding_mask=(attention_mask == 0))
+        # Permute back to (batch_size, seq_len, embed_dim)
+        attn_output = attn_output.permute(1, 0, 2)
+        
+        # Apply attention mask and get weighted sum
+        masked_attention = attn_output * attention_mask.unsqueeze(-1)
+        summed = torch.sum(masked_attention, dim=1)  # [batch_size, gru_hidden_size*2]
+        
+        # Apply dropout
+        summed = self.dropout(summed)
+        
+        # Classification
+        logits = self.classifier(summed)
+        
+        return logits
+
+# Training function
+def train_model(model, train_loader, val_loader, optimizer, scheduler, device, 
+                num_epochs=5, patience=3, delta=0.001):
+    criterion = nn.CrossEntropyLoss()
+    history = {
+        'train_loss': [],
+        'val_loss': [],
+        'val_accuracy': [],
+        'val_f1': []
+    }
+    
+    # Early stopping initialization
+    best_loss = float('inf')
+    early_stopping_counter = 0
+    best_model_weights = copy.deepcopy(model.state_dict())
+
+    for epoch in range(num_epochs):
+        model.train()
+        total_loss = 0
+        
+        # Training phase
+        for batch_idx, batch in enumerate(train_loader):
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            token_type_ids = batch['token_type_ids'].to(device)
+            labels = batch['label'].to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(input_ids, attention_mask, token_type_ids)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            if (batch_idx + 1) % 50 == 0:
+                print(f'  Batch {batch_idx + 1}/{len(train_loader)}, Loss: {loss.item():.4f}')
+
+        avg_train_loss = total_loss / len(train_loader)
+        history['train_loss'].append(avg_train_loss)
+
+        # Validation phase
+        val_loss, val_accuracy, val_f1, val_precision, val_recall = evaluate_model(
+            model, val_loader, criterion, device
+        )
+        history['val_loss'].append(val_loss)
+        history['val_accuracy'].append(val_accuracy)
+        history['val_f1'].append(val_f1)
+
+        # Early stopping check
+        if val_loss < best_loss - delta:
+            print(f'Validation loss improved from {best_loss:.4f} to {val_loss:.4f}')
+            best_loss = val_loss
+            best_model_weights = copy.deepcopy(model.state_dict())
+            early_stopping_counter = 0
+        else:
+            early_stopping_counter += 1
+            print(f'Early stopping counter: {early_stopping_counter}/{patience}')
+            if early_stopping_counter >= patience:
+                print(f'\nEarly stopping triggered at epoch {epoch+1}!')
+                break
+
+        # Learning rate scheduling
+        if scheduler:
+            scheduler.step(val_loss)
+
+        # Print epoch statistics
+        print(f'Epoch {epoch+1}/{num_epochs}:')
+        print(f'  Train Loss: {avg_train_loss:.4f}')
+        print(f'  Val Loss: {val_loss:.4f}')
+        print(f'  Val Accuracy: {val_accuracy:.4f}')
+        print(f'  Val F1: {val_f1:.4f}\n')
+
+    # Load best model weights after training
+    model.load_state_dict(best_model_weights)
+    print('Training complete. Best validation loss: {:.4f}'.format(best_loss))
+    
+    return history
+    
+# Evaluation function
+def evaluate_model(model, data_loader, criterion, device):
+    model.eval()
+    total_loss = 0
+    all_preds = []
+    all_labels = []
+    
+    with torch.no_grad():
+        for batch in data_loader:
+            # Move batch to device
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            token_type_ids = batch['token_type_ids'].to(device)
+            labels = batch['label'].to(device)
+            
+            # Forward pass
+            outputs = model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                token_type_ids=token_type_ids
+            )
+            
+            # Calculate loss
+            loss = criterion(outputs, labels)
+            total_loss += loss.item()
+            
+            # Get predictions
+            _, preds = torch.max(outputs, dim=1)
+            
+            # Store predictions and labels
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(labels.cpu().numpy())
+    
+    # Calculate metrics
+    avg_loss = total_loss / len(data_loader)
+    accuracy = accuracy_score(all_labels, all_preds)
+    precision, recall, f1, _ = precision_recall_fscore_support(all_labels, all_preds, average='weighted')
+    
+    return avg_loss, accuracy, f1, precision, recall
+
+# Test function
+def test_model(model, test_loader, device):
+    criterion = nn.CrossEntropyLoss()
+    test_loss, test_accuracy, test_f1, test_precision, test_recall = evaluate_model(model, test_loader, criterion, device)
+    
+    print(f'Test Results:')
+    print(f'  Loss: {test_loss:.4f}')
+    print(f'  Accuracy: {test_accuracy:.4f}')
+    print(f'  Precision: {test_precision:.4f}')
+    print(f'  Recall: {test_recall:.4f}')
+    print(f'  F1 Score: {test_f1:.4f}')
+    
+    return test_loss, test_accuracy, test_f1, test_precision, test_recall
+
 
 def main():
     # Set up argument parsing
