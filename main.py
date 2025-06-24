@@ -159,8 +159,8 @@ if __name__ == "__main__":
     # FOR URDU DATASET
     print("=== URDU SARCASM DETECTION ===")
     train_loader, test_loader, tokenizer = prepare_urdu_bert_data(
-        '/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_5k_processed_train.tsv',
-        '/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_5k_processed_test.tsv',
+        '/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_7_5k_processed_train.tsv',
+        '/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_7_5k_processed_test.tsv',
         batch_size=16
     )
     
