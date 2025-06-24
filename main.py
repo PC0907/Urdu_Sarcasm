@@ -3,6 +3,7 @@ import torch.nn as nn
 from transformers import BertModel, AutoModel
 from sklearn.metrics import f1_score, precision_score, recall_score
 import os
+from utils import prepare_urdu_bert_data, evaluate
 
 class UrduSarcasmDetector(nn.Module):
     def __init__(self, model_name='bert-base-multilingual-cased', dropout_rate=0.3, freeze_bert=True):
