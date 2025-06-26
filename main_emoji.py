@@ -11,6 +11,7 @@ from pathlib import Path
 import argparse
 import time
 import re
+from utils_emoji import prepare_bert_data
 
 class EmojiEncoder(nn.Module):
     """Encodes emoji sequences into fixed-dimensional embeddings."""
