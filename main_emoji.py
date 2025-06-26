@@ -336,14 +336,20 @@ def evaluate(model, test_loader, criterion, device):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Train and evaluate Urdu Sarcasm Detector')
-    parser.add_argument('--dataset', type=str, help='Name of the dataset', default='urdu_sarcasm')
+    #parser.add_argument('--dataset', type=str, help='Name of the dataset', default='urdu_sarcasm')
+    parser.add_argument('--train_path', type=str, default='/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_7_5k_processed_train.tsv')
+    parser.add_argument('--test_path', type=str, default='/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_7_5k_processed_test.tsv')
+
     parser.add_argument('--model', type=str, help='Model to use', 
                        choices=['xlm-roberta-base', 'bert-base-multilingual-cased'],
                        default='xlm-roberta-base')
     
     args = parser.parse_args()
-    train_path = f'data/{args.dataset}/train.txt'
-    test_path = f'data/{args.dataset}/test.txt'
+    # train_path = f'data/{args.dataset}/train.txt'
+    # test_path = f'data/{args.dataset}/test.txt'
+    train_path = args.train_path
+    test_path = args.test_path
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device:", device)
     print(f"Using model: {args.model}")
