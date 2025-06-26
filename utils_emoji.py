@@ -339,8 +339,8 @@ if __name__ == "__main__":
     try:
         # Test with sample paths - adjust these to your actual file paths
         train_loader, val_loader, test_loader, tokenizer, class_weights = prepare_bert_data(
-            'data/urdu_sarcasm/train.txt',
-            'data/urdu_sarcasm/test.txt',
+            '/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_7_5k_processed_train.tsv',
+            '/kaggle/working/Urdu_Sarcasm/Data/Augmented_Data/augmented_data_7_5k_processed_test.tsv',
             batch_size=8,
             model_name='xlm-roberta-base'
         )
